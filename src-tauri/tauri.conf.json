@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Link Manager",
+  "version": "0.1.0",
+  "identifier": "com.citylink.manager",
+  "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://localhost:1420", "frontendDist": "../dist" },
+  "app": { "windows": [{ "title": "Link Manager", "width": 1240, "height": 820, "minWidth": 900, "minHeight": 620, "resizable": true }], "security": { "csp": null } },
+  "bundle": { "active": true, "targets": "all", "icon": [] }
+}
