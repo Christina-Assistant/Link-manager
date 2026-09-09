@@ -8,8 +8,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
-  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_REGISTRY: ${{ vars.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
   ACR_IMAGE: link-manager
   MANAGER_PORT: 5173
 
@@ -31,8 +31,8 @@ jobs:
         env:
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
-          ACR_REGISTRY: ${{ vars.ACR_REGISTRY }}
-          ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+          ACR_REGISTRY: ${{ vars.ACR_REGISTRY || secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE || secrets.ACR_NAMESPACE }}
           ECS_HOST: ${{ secrets.ECS_HOST }}
           ECS_USERNAME: ${{ secrets.ECS_USERNAME }}
           ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
