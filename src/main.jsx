@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
   Activity, Bell, CalendarDays, ChevronLeft, ChevronRight, CircleAlert,
   FileText, GitBranch, LayoutDashboard, LogOut, Menu, RefreshCw, Search,
-  Settings2, ShieldCheck, ShoppingBag, Trash2, UserRound, Users, X
+  Settings2, ShieldCheck, ShoppingBag, SlidersHorizontal, Trash2, UserRound, Users, X
 } from 'lucide-react';
 import './styles.css';
 
@@ -15,6 +15,7 @@ const nav = [
   ['Events', CalendarDays, '活动'],
   ['Listings', ShoppingBag, '闲置'],
   ['Reports', CircleAlert, '举报'],
+  ['Permissions', SlidersHorizontal, '权限管理'],
   ['Activity log', Activity, '审计日志'],
 ];
 
@@ -55,6 +56,8 @@ function AdminShell({ token, active, setActive, mobileNav, setMobileNav, error, 
       ? <Reports count={dashboard?.reports} />
       : active === 'Activity log'
         ? <ActivityLog />
+        : active === 'Permissions'
+          ? <PermissionsPage token={token} setError={setError} />
         : <ContentPage type={active} token={token} setError={setError} />;
   return <div className="admin-shell">
     <aside className={mobileNav ? 'admin-sidebar open' : 'admin-sidebar'}>
@@ -94,6 +97,15 @@ function ContentPage({ type, token, setError }) {
 
 function Reports({ count }) { return <div className="page-body"><section className="page-intro compact"><div><span className="section-kicker">安全与审核</span><h2>举报</h2><p>集中处理用户提交的社区举报。</p></div></section><div className="surface-card empty-panel"><CircleAlert size={30} /><h3>{count ?? 0} 条待处理举报</h3><p>举报查询接口准备就绪后，这里会显示详细队列。</p></div></div>; }
 function ActivityLog() { return <div className="page-body"><section className="page-intro compact"><div><span className="section-kicker">安全与审核</span><h2>审计日志</h2><p>记录管理员登录和内容管理操作。</p></div></section><div className="surface-card empty-panel"><Activity size={30} /><h3>审计日志接口待接入</h3><p>后端已记录管理员操作，管理查询接口将在下一步开放。</p></div></div>; }
+function PermissionsPage({ token, setError }) {
+  const [roles, setRoles] = useState([]); const [permissions, setPermissions] = useState([]); const [selected, setSelected] = useState(null); const [saving, setSaving] = useState(false);
+  const load = useCallback(async () => { try { const [roleData, permissionData] = await Promise.all([apiRequest('/admin/roles', token), apiRequest('/admin/permissions', token)]); setRoles(roleData); setPermissions(permissionData); setSelected(roleData[0]?.id || null); setError(''); } catch (e) { setError(e.message); } }, [token, setError]);
+  useEffect(() => { load(); }, [load]);
+  const role = roles.find(item => item.id === selected);
+  function toggle(id) { if (!role) return; setRoles(items => items.map(item => item.id === role.id ? { ...item, permissions: item.permissions.some(permission => permission.id === id) ? item.permissions.filter(permission => permission.id !== id) : [...item.permissions, permissions.find(permission => permission.id === id)] } : item)); }
+  async function save() { if (!role) return; setSaving(true); try { const updated = await apiRequest(`/admin/roles/${role.id}/permissions`, token, { method: 'PATCH', body: JSON.stringify({ permission_ids: role.permissions.map(permission => permission.id) }) }); setRoles(items => items.map(item => item.id === updated.id ? updated : item)); setError(''); } catch (e) { setError(e.message); } finally { setSaving(false); } }
+  return <div className="page-body"><section className="page-intro compact"><div><span className="section-kicker">访问控制</span><h2>权限管理</h2><p>按角色配置管理后台可执行的操作权限。</p></div><button className="outline-button" onClick={load}><RefreshCw size={15} />刷新</button></section><div className="permission-layout"><section className="surface-card role-list"><div className="card-heading"><div><span className="section-kicker">角色</span><h3>管理角色</h3></div></div>{roles.map(item => <button key={item.id} className={item.id === selected ? 'role-item selected' : 'role-item'} onClick={() => setSelected(item.id)}><ShieldCheck size={17} /><span><b>{item.name}</b><small>{item.permissions.length} 项权限</small></span><ChevronRight size={15} /></button>)}{roles.length === 0 && <div className="table-empty">暂无角色数据</div>}</section><section className="surface-card permission-card"><div className="permission-heading"><div><span className="section-kicker">权限清单</span><h3>{role ? `${role.name} 的权限` : '选择一个角色'}</h3></div><button className="primary save-permissions" disabled={!role || saving} onClick={save}>{saving ? '保存中…' : '保存权限'}</button></div>{role ? <div className="permission-grid">{permissions.map(permission => <label className="permission-option" key={permission.id}><input type="checkbox" checked={role.permissions.some(item => item.id === permission.id)} onChange={() => toggle(permission.id)} /><span><b>{permission.name}</b><small>{permission.key}</small></span></label>)}</div> : <div className="table-empty">请选择角色</div>}</section></div></div>;
+}
 function formatDate(value) { return value ? new Date(value).toLocaleDateString('zh-CN') : ''; }
 
 function Login({ onLogin }) {
