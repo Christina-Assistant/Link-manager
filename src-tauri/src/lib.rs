@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::Command;
+mod db;
 
 #[tauri::command]
 fn project_path() -> String { r"F:\AI\Link".to_string() }
@@ -19,7 +20,13 @@ fn run_project_command(command: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![project_path, run_project_command])
+        .invoke_handler(tauri::generate_handler![
+            project_path,
+            run_project_command,
+            db::database_health,
+            db::admin_dashboard,
+            db::admin_users
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Link Manager");
 }

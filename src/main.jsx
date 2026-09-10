@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { invoke } from '@tauri-apps/api/core';
 import { Activity, Bell, Box, CheckCircle2, ChevronRight, CircleStop, Cloud, Code2, Database, ExternalLink, FileText, GitBranch, LayoutDashboard, Maximize2, Minus, Moon, Play, RefreshCw, Server, Settings2, Sun, Terminal, X, Zap } from 'lucide-react';
 import './styles.css';
 
@@ -23,7 +24,24 @@ function App() {
   const [running, setRunning] = useState(true);
   const [notice, setNotice] = useState('');
   const [dark, setDark] = useState(false);
-  const nav = [['Overview', LayoutDashboard], ['Services', Box], ['Activity log', Activity], ['Project files', FileText], ['Settings', Settings2]];
+  const [dashboard, setDashboard] = useState(null);
+  const [dbError, setDbError] = useState('');
+  const [users, setUsers] = useState(null);
+  const [userQuery, setUserQuery] = useState('');
+  React.useEffect(() => {
+    Promise.all([invoke('database_health'), invoke('admin_dashboard')])
+      .then(([, data]) => setDashboard(data))
+      .catch((error) => setDbError(String(error)));
+  }, []);
+  async function loadUsers() {
+    try {
+      setUsers(await invoke('admin_users', { keyword: userQuery, page: 1, pageSize: 20 }));
+      setDbError('');
+    } catch (error) {
+      setDbError(String(error));
+    }
+  }
+  const nav = [['Overview', LayoutDashboard], ['Users', Box], ['Services', Box], ['Activity log', Activity], ['Project files', FileText], ['Settings', Settings2]];
   const action = (message) => { setNotice(message); window.setTimeout(() => setNotice(''), 2600); };
   return <div className={dark ? 'shell dark' : 'shell'}>
     <div className="ambient ambient-one"/><div className="ambient ambient-two"/>
@@ -36,9 +54,15 @@ function App() {
     <main className="content">
       <header className="topbar"><div><span className="breadcrumb">LINK / {active.toUpperCase()}</span><h1>{active === 'Overview' ? 'Project overview' : active}</h1></div><div className="top-actions"><button className="icon-button" title="Notifications"><Bell size={18}/><em>3</em></button><button className="refresh" onClick={() => action('Project status refreshed')}><RefreshCw size={15}/> Refresh</button><button className="avatar" onClick={() => {localStorage.removeItem('link_manager_token'); setSession(null)}} title="退出登录">WM</button></div></header>
       {notice && <div className="toast"><CheckCircle2 size={16}/>{notice}</div>}
-      {active === 'Overview' ? <>
+      {dbError && <div className="login-error">{dbError}</div>}
+      {active === 'Users' ? <section className="panel manager-table">
+        <div className="panel-head"><div><h3>Users</h3><p>用户数据来自 Tauri Rust 数据库接口</p></div><button className="refresh" onClick={loadUsers}>Refresh</button></div>
+        <div className="search-row"><input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="按昵称、手机号或城市搜索"/><button className="primary" onClick={loadUsers}>查询</button></div>
+        {users?.items?.map((user) => <div className="table-row" key={user.id}><b>#{user.id} {user.nickname}</b><span>{user.phone}</span><span>{user.city}</span><span>{user.is_verified ? '已认证' : '未认证'}</span></div>)}
+        {!users && <p>点击查询加载用户。</p>}
+      </section> : active === 'Overview' ? <>
         <section className="hero-row"><div><p className="kicker"><span className="live-dot"/> LOCAL DEVELOPMENT</p><h2>Your project is <span>in sync.</span></h2><p className="hero-copy">A quiet command center for the City Link stack. Everything important, in one glance.</p></div><div className="hero-actions"><button className={running ? 'primary' : 'primary stopped'} onClick={() => {setRunning(!running); action(running ? 'All services stopped' : 'All services started')}}>{running ? <CircleStop size={17}/> : <Play size={17}/>} {running ? 'Stop all services' : 'Start all services'}</button><button className="secondary" onClick={() => action('Opening terminal...')}><Terminal size={17}/> Open terminal</button></div></section>
-        <section className="stat-grid"><div className="stat"><span>PROJECT HEALTH</span><strong className="health"><span className="health-ring">✓</span> 96%</strong><small>All core systems operational</small></div><div className="stat"><span>ACTIVE SERVICES</span><strong>4 <small>/ 4</small></strong><small>Last checked just now</small></div><div className="stat"><span>UPTIME THIS SESSION</span><strong>02<span className="unit">h</span> 18<span className="unit">m</span></strong><small>Since today, 07:24</small></div><div className="stat"><span>GIT BRANCH</span><strong className="branch"><GitBranch size={17}/> develop</strong><small>3 commits ahead of main</small></div></section>
+        <section className="stat-grid"><div className="stat"><span>PROJECT HEALTH</span><strong className="health"><span className="health-ring">✓</span> {dashboard ? '100%' : '...'}</strong><small>{dashboard ? 'Database connected' : 'Loading database'}</small></div><div className="stat"><span>USERS</span><strong>{dashboard?.users ?? '-'}</strong><small>Registered accounts</small></div><div className="stat"><span>CONTENT</span><strong>{dashboard ? dashboard.posts + dashboard.events + dashboard.listings : '-'}</strong><small>Posts, events and listings</small></div><div className="stat"><span>REPORTS</span><strong>{dashboard?.reports ?? '-'}</strong><small>Pending moderation data</small></div></section>
         <section className="section-head"><div><h3>Services</h3><p>Processes powering your local environment</p></div><button className="text-button" onClick={() => setActive('Services')}>View all <ChevronRight size={15}/></button></section>
         <section className="service-grid">{services.map(({name, detail, status, metric, icon: Icon}) => <article className="service-card" key={name}><div className="service-top"><div className="service-icon"><Icon size={18}/></div><span className={status === 'running' ? 'status running' : 'status attention'}><span/>{status === 'running' ? 'Running' : 'Attention'}</span></div><h4>{name}</h4><p>{detail}</p><div className="service-bottom"><b>{metric}</b><button title={`Open ${name}`} onClick={() => action(`${name} details opened`)}><ExternalLink size={15}/></button></div></article>)}</section>
         <section className="lower-grid"><div className="panel"><div className="panel-head"><div><h3>Recent activity</h3><p>Events from the last 24 hours</p></div><button className="text-button" onClick={() => setActive('Activity log')}>View log <ChevronRight size={15}/></button></div><div className="events">{events.map(([time, service, text, state]) => <div className="event" key={time}><span className="event-time">{time}</span><span className={`event-mark ${state}`}></span><div><b>{service}</b><p>{text}</p></div></div>)}</div></div><div className="panel deploy"><div className="panel-head"><div><h3>Environment</h3><p>Runtime configuration</p></div><Cloud size={18} className="muted"/></div><div className="env-row"><span>Mode</span><b>Development</b><span className="tag cyan">LOCAL</span></div><div className="env-row"><span>Last deploy</span><b>Aug 30, 2026</b></div><div className="env-row"><span>Runtime</span><b>Go 1.24 · Flutter 3.35</b></div><button className="outline-wide" onClick={() => action('Opening project settings')}><Settings2 size={15}/> Manage configuration</button></div></section>
