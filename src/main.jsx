@@ -1,80 +1,105 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { invoke } from '@tauri-apps/api/core';
-import { Activity, Bell, Box, CheckCircle2, ChevronRight, CircleStop, Cloud, Code2, Database, ExternalLink, FileText, GitBranch, LayoutDashboard, Maximize2, Minus, Moon, Play, RefreshCw, Server, Settings2, Sun, Terminal, X, Zap } from 'lucide-react';
+import {
+  Activity, Bell, CalendarDays, ChevronLeft, ChevronRight, CircleAlert,
+  FileText, GitBranch, LayoutDashboard, LogOut, Menu, RefreshCw, Search,
+  Settings2, ShieldCheck, ShoppingBag, Trash2, UserRound, Users, X
+} from 'lucide-react';
 import './styles.css';
 
-const services = [
-  { name: 'API Server', detail: 'Go · :8090', status: 'running', metric: '42 ms', icon: Server },
-  { name: 'Web Client', detail: 'Flutter · web', status: 'running', metric: 'Ready', icon: Code2 },
-  { name: 'PostgreSQL', detail: 'Docker · :5432', status: 'running', metric: '18.4 MB', icon: Database },
-  { name: 'Realtime Hub', detail: 'WebSocket · :8091', status: 'attention', metric: '2 warnings', icon: Zap },
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8090/api/v1';
+const nav = [
+  ['Overview', LayoutDashboard, '概览'],
+  ['Users', Users, '用户'],
+  ['Posts', FileText, '动态'],
+  ['Events', CalendarDays, '活动'],
+  ['Listings', ShoppingBag, '闲置'],
+  ['Reports', CircleAlert, '举报'],
+  ['Activity log', Activity, '审计日志'],
 ];
-const events = [
-  ['09:42:18', 'API Server', 'Health check passed', 'ok'],
-  ['09:39:04', 'PostgreSQL', 'Backup completed · 184 MB', 'ok'],
-  ['09:31:27', 'Realtime Hub', 'Reconnect threshold reached', 'warn'],
-  ['09:16:03', 'Web Client', 'Build artifacts refreshed', 'ok'],
-];
+
+function apiRequest(path, token, options = {}) {
+  return fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(options.headers || {}) },
+  }).then(async (res) => {
+    if (res.status === 401) throw new Error('登录已过期，请重新登录');
+    const data = res.status === 204 ? null : await res.json();
+    if (!res.ok) throw new Error(data?.message || '请求失败');
+    return data;
+  });
+}
 
 function App() {
-  const [session, setSession] = useState(() => localStorage.getItem('link_manager_token'));
-  if (!session) return <Login onLogin={(token) => { localStorage.setItem('link_manager_token', token); setSession(token); }} />;
+  const [token, setToken] = useState(() => localStorage.getItem('link_manager_token'));
   const [active, setActive] = useState('Overview');
-  const [running, setRunning] = useState(true);
-  const [notice, setNotice] = useState('');
-  const [dark, setDark] = useState(false);
-  const [dashboard, setDashboard] = useState(null);
-  const [dbError, setDbError] = useState('');
-  const [users, setUsers] = useState(null);
-  const [userQuery, setUserQuery] = useState('');
-  React.useEffect(() => {
-    Promise.all([invoke('database_health'), invoke('admin_dashboard')])
-      .then(([, data]) => setDashboard(data))
-      .catch((error) => setDbError(String(error)));
-  }, []);
-  async function loadUsers() {
-    try {
-      setUsers(await invoke('admin_users', { keyword: userQuery, page: 1, pageSize: 20 }));
-      setDbError('');
-    } catch (error) {
-      setDbError(String(error));
-    }
-  }
-  const nav = [['Overview', LayoutDashboard], ['Users', Box], ['Services', Box], ['Activity log', Activity], ['Project files', FileText], ['Settings', Settings2]];
-  const action = (message) => { setNotice(message); window.setTimeout(() => setNotice(''), 2600); };
-  return <div className={dark ? 'shell dark' : 'shell'}>
-    <div className="ambient ambient-one"/><div className="ambient ambient-two"/>
-    <aside className="sidebar">
-      <div className="window-titlebar"><div className="brand"><div className="brand-mark"><GitBranch size={18}/></div><div><strong>LINK</strong><span>MANAGER</span></div></div><div className="window-controls"><button title="最小化"><Minus size={14}/></button><button title="最大化"><Maximize2 size={13}/></button><button title="关闭"><X size={14}/></button></div></div>
-      <div className="workspace"><span className="eyebrow">WORKSPACE</span><div className="workspace-row"><span className="project-dot"/>Link <ChevronRight size={14}/></div><small>F:\AI\Link</small></div>
-      <nav>{nav.map(([label, Icon]) => <button key={label} className={active === label ? 'nav-item active' : 'nav-item'} onClick={() => setActive(label)}><Icon size={17}/><span>{label}</span>{label === 'Activity log' && <i>4</i>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="connection"><span className="pulse"/>Local machine<div><b>Connected</b><small>Windows · Tauri 2</small></div></div><button className="profile"><span>WM</span><div><b>Workspace admin</b><small>Local profile</small></div><ChevronRight size={14}/></button></div>
-    </aside>
-    <main className="content">
-      <header className="topbar"><div><span className="breadcrumb">LINK / {active.toUpperCase()}</span><h1>{active === 'Overview' ? 'Project overview' : active}</h1></div><div className="top-actions"><button className="icon-button" title="Notifications"><Bell size={18}/><em>3</em></button><button className="refresh" onClick={() => action('Project status refreshed')}><RefreshCw size={15}/> Refresh</button><button className="avatar" onClick={() => {localStorage.removeItem('link_manager_token'); setSession(null)}} title="退出登录">WM</button></div></header>
-      {notice && <div className="toast"><CheckCircle2 size={16}/>{notice}</div>}
-      {dbError && <div className="login-error">{dbError}</div>}
-      {active === 'Users' ? <section className="panel manager-table">
-        <div className="panel-head"><div><h3>Users</h3><p>用户数据来自 Tauri Rust 数据库接口</p></div><button className="refresh" onClick={loadUsers}>Refresh</button></div>
-        <div className="search-row"><input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="按昵称、手机号或城市搜索"/><button className="primary" onClick={loadUsers}>查询</button></div>
-        {users?.items?.map((user) => <div className="table-row" key={user.id}><b>#{user.id} {user.nickname}</b><span>{user.phone}</span><span>{user.city}</span><span>{user.is_verified ? '已认证' : '未认证'}</span></div>)}
-        {!users && <p>点击查询加载用户。</p>}
-      </section> : active === 'Overview' ? <>
-        <section className="hero-row"><div><p className="kicker"><span className="live-dot"/> LOCAL DEVELOPMENT</p><h2>Your project is <span>in sync.</span></h2><p className="hero-copy">A quiet command center for the City Link stack. Everything important, in one glance.</p></div><div className="hero-actions"><button className={running ? 'primary' : 'primary stopped'} onClick={() => {setRunning(!running); action(running ? 'All services stopped' : 'All services started')}}>{running ? <CircleStop size={17}/> : <Play size={17}/>} {running ? 'Stop all services' : 'Start all services'}</button><button className="secondary" onClick={() => action('Opening terminal...')}><Terminal size={17}/> Open terminal</button></div></section>
-        <section className="stat-grid"><div className="stat"><span>PROJECT HEALTH</span><strong className="health"><span className="health-ring">✓</span> {dashboard ? '100%' : '...'}</strong><small>{dashboard ? 'Database connected' : 'Loading database'}</small></div><div className="stat"><span>USERS</span><strong>{dashboard?.users ?? '-'}</strong><small>Registered accounts</small></div><div className="stat"><span>CONTENT</span><strong>{dashboard ? dashboard.posts + dashboard.events + dashboard.listings : '-'}</strong><small>Posts, events and listings</small></div><div className="stat"><span>REPORTS</span><strong>{dashboard?.reports ?? '-'}</strong><small>Pending moderation data</small></div></section>
-        <section className="section-head"><div><h3>Services</h3><p>Processes powering your local environment</p></div><button className="text-button" onClick={() => setActive('Services')}>View all <ChevronRight size={15}/></button></section>
-        <section className="service-grid">{services.map(({name, detail, status, metric, icon: Icon}) => <article className="service-card" key={name}><div className="service-top"><div className="service-icon"><Icon size={18}/></div><span className={status === 'running' ? 'status running' : 'status attention'}><span/>{status === 'running' ? 'Running' : 'Attention'}</span></div><h4>{name}</h4><p>{detail}</p><div className="service-bottom"><b>{metric}</b><button title={`Open ${name}`} onClick={() => action(`${name} details opened`)}><ExternalLink size={15}/></button></div></article>)}</section>
-        <section className="lower-grid"><div className="panel"><div className="panel-head"><div><h3>Recent activity</h3><p>Events from the last 24 hours</p></div><button className="text-button" onClick={() => setActive('Activity log')}>View log <ChevronRight size={15}/></button></div><div className="events">{events.map(([time, service, text, state]) => <div className="event" key={time}><span className="event-time">{time}</span><span className={`event-mark ${state}`}></span><div><b>{service}</b><p>{text}</p></div></div>)}</div></div><div className="panel deploy"><div className="panel-head"><div><h3>Environment</h3><p>Runtime configuration</p></div><Cloud size={18} className="muted"/></div><div className="env-row"><span>Mode</span><b>Development</b><span className="tag cyan">LOCAL</span></div><div className="env-row"><span>Last deploy</span><b>Aug 30, 2026</b></div><div className="env-row"><span>Runtime</span><b>Go 1.24 · Flutter 3.35</b></div><button className="outline-wide" onClick={() => action('Opening project settings')}><Settings2 size={15}/> Manage configuration</button></div></section>
-      </> : <div className="empty-state"><div className="empty-icon"><Terminal size={24}/></div><h2>{active}</h2><p>This workspace view is ready for your next workflow.</p><button className="primary" onClick={() => setActive('Overview')}>Back to overview</button></div>}
-      <div className="taskbar"><div className="taskbar-group"><button className="task-home" title="Link Manager"><GitBranch size={17}/></button><span className="task-separator"/><button className="task-running" onClick={() => setActive('Overview')}><LayoutDashboard size={16}/><span>Link Manager</span></button></div><div className="taskbar-group task-status"><button title="切换主题" onClick={() => setDark(!dark)}>{dark ? <Sun size={16}/> : <Moon size={16}/>}</button><span className="task-clock">LOCAL&nbsp; · &nbsp;{new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div></div>
-    </main>
-  </div>
+  const [mobileNav, setMobileNav] = useState(false);
+  const [error, setError] = useState('');
+  const signOut = useCallback(() => { localStorage.removeItem('link_manager_token'); setToken(null); }, []);
+  if (!token) return <Login onLogin={(value) => { localStorage.setItem('link_manager_token', value); setToken(value); }} />;
+  return <AdminShell token={token} active={active} setActive={setActive} mobileNav={mobileNav}
+    setMobileNav={setMobileNav} error={error} setError={setError} signOut={signOut} />;
 }
 
-function Login({onLogin}) {
-  const [username,setUsername]=useState('admin'); const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [loading,setLoading]=useState(false);
-  async function submit(e){e.preventDefault();setLoading(true);setError('');try{const base=import.meta.env.VITE_API_URL||'http://localhost:8090/api/v1';const res=await fetch(`${base}/admin/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});const data=await res.json();if(!res.ok)throw new Error(data.message||'登录失败');onLogin(data.token)}catch(err){setError(err.message)}finally{setLoading(false)}}
-  return <div className="login-shell"><div className="login-window"><div className="login-brand"><div className="brand-mark"><GitBranch size={20}/></div><div><strong>LINK</strong><span>MANAGER</span></div></div><div className="login-copy"><span className="eyebrow">ADMINISTRATION</span><h1>Sign in to Link</h1><p>Manage your City Link workspace securely.</p></div><form onSubmit={submit}><label>Username<input value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username" required/></label><label>Password<input value={password} onChange={e=>setPassword(e.target.value)} type="password" autoComplete="current-password" required/></label>{error&&<div className="login-error">{error}</div>}<button className="primary login-button" disabled={loading}>{loading?'Signing in…':'Sign in'}</button></form><small className="login-foot">Protected management API · City Link</small></div></div>
+function AdminShell({ token, active, setActive, mobileNav, setMobileNav, error, setError, signOut }) {
+  const [dashboard, setDashboard] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const loadDashboard = useCallback(async () => {
+    try { setDashboard(await apiRequest('/admin/dashboard', token)); setError(''); setLastRefresh(new Date()); }
+    catch (e) { setError(e.message); if (e.message.includes('过期')) signOut(); }
+  }, [token, setError, signOut]);
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+  const page = active === 'Overview'
+    ? <Overview dashboard={dashboard} onRefresh={loadDashboard} setActive={setActive} />
+    : active === 'Reports'
+      ? <Reports count={dashboard?.reports} />
+      : active === 'Activity log'
+        ? <ActivityLog />
+        : <ContentPage type={active} token={token} setError={setError} />;
+  return <div className="admin-shell">
+    <aside className={mobileNav ? 'admin-sidebar open' : 'admin-sidebar'}>
+      <div className="admin-brand"><div className="brand-mark"><GitBranch size={18} /></div><div><strong>CITY LINK</strong><span>ADMIN CONSOLE</span></div><button className="mobile-close" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
+      <div className="workspace-label">运营工作区</div>
+      <nav>{nav.map(([key, Icon, label]) => <button key={key} className={active === key ? 'admin-nav active' : 'admin-nav'} onClick={() => { setActive(key); setMobileNav(false); }}><Icon size={17} /><span>{label}</span>{key === 'Reports' && dashboard?.reports > 0 && <b>{dashboard.reports}</b>}</button>)}</nav>
+      <div className="admin-sidebar-bottom"><div className="api-status"><span />管理 API 在线<small>{API_URL.replace('/api/v1', '')}</small></div><button className="admin-nav" onClick={signOut}><LogOut size={17} />退出登录</button></div>
+    </aside>
+    {mobileNav && <button className="nav-overlay" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}
+    <main className="admin-main">
+      <header className="admin-header"><div className="header-title"><button className="mobile-menu" onClick={() => setMobileNav(true)}><Menu size={20} /></button><div><span className="breadcrumb">CITY LINK / {active.toUpperCase()}</span><h1>{nav.find(([key]) => key === active)?.[2] || active}</h1></div></div><div className="header-actions"><span className="last-sync">同步于 {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><button className="header-icon" onClick={loadDashboard} title="刷新"><RefreshCw size={17} /></button><button className="admin-avatar" onClick={signOut} title="退出登录">AD</button></div></header>
+      {error && <div className="admin-alert"><CircleAlert size={17} />{error}<button onClick={() => setError('')}><X size={15} /></button></div>}
+      {page}
+    </main>
+  </div>;
 }
+
+function Overview({ dashboard, onRefresh, setActive }) {
+  const cards = [['用户总数', dashboard?.users, UserRound, '注册用户'], ['动态', dashboard?.posts, FileText, '社区内容'], ['活动', dashboard?.events, CalendarDays, '已发布活动'], ['闲置', dashboard?.listings, ShoppingBag, '闲置商品']];
+  return <div className="page-body">
+    <section className="page-intro"><div><span className="section-kicker">运营总览</span><h2>把 City Link 运营得更好。</h2><p>查看社区规模、内容状态和需要关注的举报。</p></div><button className="outline-button" onClick={onRefresh}><RefreshCw size={16} />刷新数据</button></section>
+    <section className="metric-grid">{cards.map(([label, value, Icon, note]) => <div className="metric-card" key={label}><div className="metric-icon"><Icon size={18} /></div><span>{label}</span><strong>{value ?? '—'}</strong><small>{note}</small></div>)}</section>
+    <section className="overview-grid"><div className="surface-card welcome-card"><div><span className="section-kicker">平台状态</span><h3>社区运行正常</h3><p>管理员 API 已连接，数据来自生产数据库。</p></div><ShieldCheck size={38} /></div><div className="surface-card attention-card"><div className="card-heading"><div><span className="section-kicker">需要处理</span><h3>举报队列</h3></div><CircleAlert size={19} /></div><strong>{dashboard?.reports ?? '—'}</strong><p>条待审核举报</p><button className="link-button" onClick={() => setActive('Reports')}>查看举报 <ChevronRight size={15} /></button></div></section>
+    <section className="surface-card quick-card"><div className="card-heading"><div><span className="section-kicker">快捷操作</span><h3>内容管理</h3></div></div><div className="quick-actions">{[['Users', UserRound, '查看用户'], ['Posts', FileText, '审核动态'], ['Events', CalendarDays, '管理活动'], ['Listings', ShoppingBag, '管理闲置']].map(([key, Icon, label]) => <button key={key} onClick={() => setActive(key)}><Icon size={18} /><span>{label}</span><ChevronRight size={15} /></button>)}</div></section>
+  </div>;
+}
+
+function ContentPage({ type, token, setError }) {
+  const config = useMemo(() => ({ Users: ['用户', '昵称、手机号或城市', 'users'], Posts: ['动态', '内容或城市', 'posts'], Events: ['活动', '标题或城市', 'events'], Listings: ['闲置', '标题或城市', 'listings'] }[type]), [type]);
+  const [query, setQuery] = useState(''); const [data, setData] = useState(null); const [page, setPage] = useState(1); const [loading, setLoading] = useState(false);
+  const load = useCallback(async () => { setLoading(true); try { setData(await apiRequest(`/admin/${config[2]}?page=${page}&page_size=10&q=${encodeURIComponent(query)}`, token)); setError(''); } catch (e) { setError(e.message); } finally { setLoading(false); } }, [config, page, query, token, setError]);
+  useEffect(() => { load(); }, [load]);
+  async function remove(id) { if (!window.confirm('确定删除这条内容吗？此操作不可撤销。')) return; try { await apiRequest(`/admin/${config[2]}/${id}`, token, { method: 'DELETE' }); load(); } catch (e) { setError(e.message); } }
+  const rows = data?.items || []; const pagination = data?.pagination; const isUsers = type === 'Users';
+  return <div className="page-body"><section className="page-intro compact"><div><span className="section-kicker">数据管理 / {config[0]}</span><h2>{config[0]}</h2><p>搜索、查看和管理平台上的{config[0]}。</p></div></section><section className="surface-card data-card"><div className="toolbar"><div className="search-box"><Search size={16} /><input value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} placeholder={`搜索${config[1]}`} /></div><button className="outline-button" onClick={load}><RefreshCw size={15} />刷新</button></div><div className="data-table"><div className="table-head"><span>ID</span><span>{isUsers ? '用户' : '内容'}</span><span>{isUsers ? '联系方式' : '发布者'}</span><span>{isUsers ? '城市' : '城市 / 时间'}</span><span>操作</span></div>{loading && <div className="table-empty">正在加载…</div>}{!loading && rows.map(row => <div className="table-line" key={row.id}><span className="muted-cell">#{row.id}</span><span><b>{isUsers ? (row.nickname || '未设置昵称') : (row.title || row.content?.slice(0, 34) || '无标题')}</b>{isUsers && <small>{row.is_verified ? '已认证' : '未认证'}</small>}</span><span>{isUsers ? row.phone : (row.user?.nickname || '未知用户')}</span><span>{row.city || '—'}{!isUsers && <small>{formatDate(row.created_at)}</small>}</span><span>{!isUsers && <button className="danger-button" onClick={() => remove(row.id)} title="删除"><Trash2 size={15} /></button>}</span></div>)}{!loading && rows.length === 0 && <div className="table-empty">没有找到匹配数据</div>}</div><div className="pagination"><span>共 {pagination?.total ?? 0} 条</span><div><button disabled={page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft size={15} /></button><b>{page} / {pagination?.total_pages || 1}</b><button disabled={page >= (pagination?.total_pages || 1)} onClick={() => setPage(page + 1)}><ChevronRight size={15} /></button></div></div></section></div>;
+}
+
+function Reports({ count }) { return <div className="page-body"><section className="page-intro compact"><div><span className="section-kicker">安全与审核</span><h2>举报</h2><p>集中处理用户提交的社区举报。</p></div></section><div className="surface-card empty-panel"><CircleAlert size={30} /><h3>{count ?? 0} 条待处理举报</h3><p>举报查询接口准备就绪后，这里会显示详细队列。</p></div></div>; }
+function ActivityLog() { return <div className="page-body"><section className="page-intro compact"><div><span className="section-kicker">安全与审核</span><h2>审计日志</h2><p>记录管理员登录和内容管理操作。</p></div></section><div className="surface-card empty-panel"><Activity size={30} /><h3>审计日志接口待接入</h3><p>后端已记录管理员操作，管理查询接口将在下一步开放。</p></div></div>; }
+function formatDate(value) { return value ? new Date(value).toLocaleDateString('zh-CN') : ''; }
+
+function Login({ onLogin }) {
+  const [username, setUsername] = useState('admin'); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
+  async function submit(e) { e.preventDefault(); setLoading(true); setError(''); try { const res = await fetch(`${API_URL}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }); const data = await res.json(); if (!res.ok) throw new Error(data.message || '登录失败'); onLogin(data.token); } catch (e) { setError(e.message); } finally { setLoading(false); } }
+  return <div className="login-shell"><div className="login-window"><div className="login-brand"><div className="brand-mark"><GitBranch size={20} /></div><div><strong>CITY LINK</strong><span>ADMIN CONSOLE</span></div></div><div className="login-copy"><span className="eyebrow">安全管理平台</span><h1>登录管理后台</h1><p>管理用户、内容与社区秩序。</p></div><form onSubmit={submit}><label>管理员账号<input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" required /></label><label>密码<input value={password} onChange={e => setPassword(e.target.value)} type="password" autoComplete="current-password" required /></label>{error && <div className="login-error">{error}</div>}<button className="primary login-button" disabled={loading}>{loading ? '登录中…' : '登录管理后台'}</button></form><small className="login-foot">City Link · Protected administration</small></div></div>;
+}
+
 createRoot(document.getElementById('root')).render(<App />);
